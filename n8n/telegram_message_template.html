@@ -1,0 +1,21 @@
+📝 <b>新投稿通知</b>
+
+<b>主題：</b>
+{{ $json.subject }}
+
+<b>投稿者：</b>
+{{ $json.senderName }} ({{ $json.senderEmail }})
+
+<b>文章連結：</b>
+{{ $json.articleUrl }}
+
+<b>分類：</b>{{ $json.category }}
+
+<b>指派 Reviewer：</b>
+1️⃣ @{{ $json.reviewer1 }}
+2️⃣ @{{ $json.reviewer2 }}
+
+<b>原因：</b>
+{{ $json.reason }}
+
+請指派的 Reviewer 在一週內完成審稿，謝謝！🙏
