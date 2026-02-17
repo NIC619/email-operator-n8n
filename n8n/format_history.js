@@ -35,20 +35,21 @@ if (recent.length > 0 && recent[0].Date) {
     .join(', ') || '無紀錄';
 }
 
-// Get data from earlier nodes
-let subject = '', articleUrl = '', emailBody = '', senderName = '', senderEmail = '';
+// Get data from earlier nodes (use .first() for "Run Once for All Items" mode)
+let subject = '', articleUrl = '', emailBody = '', senderName = '', senderEmail = '', emailId = '';
 try {
-  const info = $('Extract Info').item.json;
+  const info = $('Check Duplicate').first().json;
   subject = info.subject || '';
   articleUrl = info.articleUrl || '';
   emailBody = info.emailBody || '';
   senderName = info.senderName || '';
   senderEmail = info.senderEmail || '';
+  emailId = info.emailId || '';
 } catch (e) {}
 
 let articleContent = '無法取得文章內容（連結可能需要登入）';
 try {
-  const fetchData = $('Fetch Article').item.json;
+  const fetchData = $('Fetch Article').first().json;
   if (fetchData && fetchData.data) {
     articleContent = fetchData.data.substring(0, 3000);
   }
@@ -59,6 +60,7 @@ return [{
   json: {
     historyText,
     workloadSummary,
+    emailId,
     subject,
     articleUrl,
     emailBody,

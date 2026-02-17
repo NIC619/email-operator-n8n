@@ -2,15 +2,15 @@
 // Description: Checks if this email has already been processed by comparing
 //              the email ID against the Google Sheet log
 // n8n Node Type: Code (JavaScript), Mode: Run Once for All Items
-// Place this AFTER Extract Info and BEFORE Fetch Article
+// Settings: "Always Output Data" = OFF (important — empty return stops the chain)
+// Place this AFTER "Read Log for Dedup" and BEFORE "Fetch Article"
 //
 // Prerequisites:
-// - Add a new column "EmailId" to your Google Sheet (column H)
-// - Add a "Read Sheet" node before this to load existing records
-// - Name that node "Read Log for Dedup"
+// - Add a column "EmailId" to your Google Sheet (column H)
+// - Add a Google Sheets Read node before this named "Read Log for Dedup"
+//   with "Always Output Data" = ON
 
-const emailId = $('Gmail Trigger').item.json.id || '';
-const subject = $('Extract Info').item.json.subject || '';
+const emailId = $('Gmail Trigger').first().json.id || '';
 
 // Get existing email IDs from the sheet
 let existingIds = [];
@@ -26,14 +26,14 @@ const isDuplicate = existingIds.includes(emailId);
 
 if (isDuplicate) {
   // Return empty to stop the workflow for this item
-  // (Make sure the next node does NOT have "Always Output Data" on)
   return [];
 }
 
 // Not a duplicate — pass through all data plus the email ID
+const info = $('Extract Info').first().json;
 return [{
   json: {
-    ...$('Extract Info').item.json,
+    ...info,
     emailId: emailId
   }
 }];

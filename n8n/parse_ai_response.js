@@ -25,16 +25,19 @@ try {
   };
 }
 
+const formatHistory = $('Format History').first().json;
+
 return [{
   json: {
     reviewer1: parsed.reviewer1,
     reviewer2: parsed.reviewer2,
     category: parsed.category,
     reason: parsed.reason_zh,
-    subject: $('Format History').item.json.subject,
-    articleUrl: $('Format History').item.json.articleUrl,
-    senderName: $('Format History').item.json.senderName,
-    senderEmail: $('Format History').item.json.senderEmail,
+    subject: formatHistory.subject,
+    articleUrl: formatHistory.articleUrl,
+    senderName: formatHistory.senderName,
+    senderEmail: formatHistory.senderEmail,
+    emailId: formatHistory.emailId || '',
     date: new Date().toISOString().split('T')[0]
   }
 }];
