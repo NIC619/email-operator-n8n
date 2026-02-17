@@ -52,9 +52,8 @@ Google Sheets       Telegram
 tem-reviewer-bot/
 ├── README.md                  # This file
 ├── config/
-│   ├── reviewer_config.md     # Reviewer list with categories (source of truth)
-│   ├── ai_system_prompt.txt   # AI system prompt (edit this to change AI behavior)
-│   └── ai_assign_expression.md # n8n expression for AI Assign node (reference)
+│   ├── ai_system_prompt.txt.example  # AI system prompt template (copy to .txt, remove .example)
+│   └── ai_assign_expression.md       # n8n expression for AI Assign node (reference)
 ├── scripts/
 │   └── generate_expression.py # Generates n8n expression from system prompt
 ├── n8n/
@@ -76,11 +75,10 @@ See [docs/setup_guide.md](docs/setup_guide.md) for full setup instructions.
 
 ## Updating Reviewers
 
-1. Edit `config/reviewer_config.md` with the new reviewer list
-2. Edit `config/ai_system_prompt.txt` to match
-3. Run `python scripts/generate_expression.py`
-4. Copy the generated expression from `config/ai_assign_expression_generated.txt`
-5. Paste into the n8n AI Assign node's JSON body field (Expression mode)
+1. Edit `config/ai_system_prompt.txt.example` with your changes (then remove the `.example` postfix so it becomes `ai_system_prompt.txt`)
+2. Run `python scripts/generate_expression.py`
+3. Copy the generated expression from `config/ai_assign_expression_generated.txt`
+4. Paste into the n8n AI Assign node's JSON body field (Expression mode)
 
 See [docs/maintenance_guide.md](docs/maintenance_guide.md) for details.
 

@@ -6,15 +6,14 @@ When reviewers join, leave, or change specialties:
 
 ### Quick method (manual)
 
-1. Edit `config/reviewer_config.md` with the changes
-2. Edit `config/ai_system_prompt.txt` to match
-3. Open n8n → AI Assign node → edit the JSON body expression
-4. Find the reviewer list section in the system prompt and update it
-5. Test with a sample email
+1. Edit `config/ai_system_prompt.txt.example` with the changes (then remove the `.example` postfix so it becomes `ai_system_prompt.txt`)
+2. Open n8n → AI Assign node → edit the JSON body expression
+3. Find the reviewer list section in the system prompt and update it
+4. Test with a sample email
 
 ### Script method (recommended)
 
-1. Edit `config/ai_system_prompt.txt` with the updated reviewer list
+1. Edit `config/ai_system_prompt.txt.example` with the updated reviewer list (then remove the `.example` postfix so it becomes `ai_system_prompt.txt`)
 2. Run the generator script:
    ```bash
    python scripts/generate_expression.py
@@ -27,8 +26,7 @@ When reviewers join, leave, or change specialties:
 
 ## Adding a New Category
 
-1. Add the category to `config/reviewer_config.md`
-2. Add it to `config/ai_system_prompt.txt` following the same format:
+1. Add the category to `config/ai_system_prompt.txt` (edit `ai_system_prompt.txt.example` first, then remove the `.example` postfix) following the same format:
    ```
    ### Category Name
    Description of topics covered
