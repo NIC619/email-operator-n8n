@@ -1,0 +1,6 @@
+.DS_Store
+
+# Config files
+config/reviewer_config.md
+config/ai_system_prompt.txt
+config/ai_assign_expression_generated.txt
