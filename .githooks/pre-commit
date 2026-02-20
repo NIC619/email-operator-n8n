@@ -1,0 +1,61 @@
+#!/bin/sh
+# Pre-commit hook: scan staged files for secrets, API keys, and tokens
+# Blocks commit if potential leaks are detected
+
+set -e
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Get staged files
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$STAGED" ] && exit 0
+
+FOUND=0
+
+for file in $STAGED; do
+  [ ! -f "$file" ] && continue
+  # Skip binary
+  case $(git diff --cached "$file" 2>/dev/null | head -1) in
+    *"Binary files"*) continue ;;
+  esac
+
+  # Get staged content
+  CONTENT=$(git show ":$file" 2>/dev/null) || continue
+
+  # Patterns (grep -E). Placeholders like <YOUR_BOT_TOKEN> won't match these.
+  if echo "$CONTENT" | grep -E '[0-9]{8,11}:[a-zA-Z0-9_-]{35}' | grep -qvE '<YOUR_|placeholder|example'; then
+    echo "${RED}⚠️  Possible Telegram bot token in $file${NC}"
+    FOUND=1
+  fi
+  if echo "$CONTENT" | grep -iE '(api[_-]?key|apikey)\s*[:=]\s*['\''"]?[a-zA-Z0-9_-]{20,}' | grep -qvE 'YOUR_|placeholder|example|<'; then
+    echo "${RED}⚠️  Possible API key in $file${NC}"
+    FOUND=1
+  fi
+  if echo "$CONTENT" | grep -E 'sk-[a-zA-Z0-9]{48}|sk-proj-[a-zA-Z0-9_-]{100,}' >/dev/null 2>&1; then
+    echo "${RED}⚠️  Possible OpenAI key in $file${NC}"
+    FOUND=1
+  fi
+  if echo "$CONTENT" | grep -E 'AKIA[0-9A-Z]{16}' >/dev/null 2>&1; then
+    echo "${RED}⚠️  Possible AWS key in $file${NC}"
+    FOUND=1
+  fi
+  if echo "$CONTENT" | grep -iE '(secret[_-]?key|bearer)\s*[:=]?\s*['\''"]?[a-zA-Z0-9_-]{20,}' | grep -qvE 'YOUR_|placeholder|example'; then
+    echo "${RED}⚠️  Possible secret/token in $file${NC}"
+    FOUND=1
+  fi
+  if echo "$CONTENT" | grep -E 'api\.telegram\.org/bot[0-9]{8,11}:' >/dev/null 2>&1; then
+    echo "${RED}⚠️  Telegram API URL with real token in $file${NC}"
+    FOUND=1
+  fi
+done
+
+if [ $FOUND -eq 1 ]; then
+  echo ""
+  echo "${RED}Commit blocked. Remove secrets before committing.${NC}"
+  echo "Use env vars or .env (in .gitignore) for sensitive values."
+  exit 1
+fi
+
+exit 0
