@@ -27,14 +27,14 @@
 2. Settings → Filters → Create filter
 3. Subject: `TEM 專欄投稿：`
 4. Action: Apply label `TEM-submissions` + Forward to your personal Gmail
-5. In n8n, configure Gmail Trigger to filter by the `TEM-submissions` label
+5. In n8n, configure Gmail Trigger to filter by the label
 
 ## Step 3: Google Sheet
 
 1. Create a Google Sheet named **"TEM Reviewer Log"**
-2. Row 1 headers: `Date | Subject | Reviewer1 | Reviewer2 | Category | Sender | ArticleUrl | EmailId`
+2. Row 1 headers: `Date | Subject | Reviewer1 | Reviewer2 | Category | Sender | ArticleUrl | EmailId | Reviewer1Status | Reviewer2Status`
 3. Add a dummy row to prevent empty-sheet issues on first run:
-   `2025-01-01 | 初始紀錄（測試用） | test | test | General | test | - | -`
+   `2025-01-01 | 初始紀錄（測試用） | test | test | General | test | - | - | | `
 
 ## Step 4: Telegram Bot
 
@@ -53,7 +53,7 @@
 
 ### Node 1: Gmail Trigger
 - Credential: Gmail OAuth (authenticate with your personal account)
-- Poll: Every day at 10:00 AM
+- Poll: Every Day at 10:00 (or your preferred schedule)
 - Filter by label: `TEM-submissions`
 
 ### Node 2: Extract Info (Code)
@@ -69,13 +69,13 @@
 ### Node 4: Check Duplicate (Code)
 - Paste code from `n8n/check_duplicate.js`
 - Mode: Run Once for All Items
-- Settings: **Always Output Data = OFF** (important — empty return stops duplicates)
+- Settings: **Always Output Data = OFF**
 
 ### Node 5: Fetch Article (HTTP Request)
 - Method: GET
 - URL: `{{ $json.articleUrl }}`
 - On Error: **Continue (using error output)**
-- Connect **both** Success and Error outputs to the next node
+- Connect **both** Success and Error outputs to next node
 
 ### Node 6: Get row(s) in sheet (Google Sheets)
 - Operation: Read Rows
@@ -91,29 +91,27 @@
 ### Node 8: AI Assign (HTTP Request)
 - Method: POST
 - URL: `https://api.openai.com/v1/chat/completions`
-- Auth: Generic Credential Type → Header Auth
-  - Name: `Authorization`
-  - Value: `Bearer YOUR_OPENAI_API_KEY`
-- Send Headers: `Content-Type: application/json`
-- Send Body: JSON
-- Specify Body: **Using JSON**, toggled to **Expression** mode
-- Paste the expression from `config/ai_assign_expression_generated.txt`
-  - Generate it first: `python scripts/generate_expression.py`
+- Auth: Header Auth (`Authorization: Bearer YOUR_KEY`)
+- Body: JSON, Expression mode
+- Paste expression from `config/ai_assign_expression_generated.txt`
 
 ### Node 9: Parse AI Response (Code)
 - Paste code from `n8n/parse_ai_response.js`
 - Mode: Run Once for All Items
 
-### Node 10: Send a text message (Telegram)
-- Bot token credential
-- Chat ID: your reviewers group chat ID
-- Additional Fields → Parse Mode: **HTML**
-- Text: paste from `n8n/telegram_message_template.html`
+### Node 10: Build Telegram Payload (Code)
+- Paste code from `n8n/build_telegram_payload.js`
+- Mode: Run Once for All Items
+- **Update** `chat_id` to your group chat ID
 
-### Node 11: Append row in sheet (Google Sheets)
+### Node 11: Send Telegram Notification (HTTP Request)
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
+- Body: JSON, Expression mode: `{{ $json }}`
+
+### Node 12: Append row in sheet (Google Sheets)
 - Operation: Append Row
 - Document: TEM Reviewer Log
-- Sheet: Sheet1
 - Mapping:
   - Date: `{{ $json.date }}`
   - Subject: `{{ $json.subject }}`
@@ -124,57 +122,91 @@
   - ArticleUrl: `{{ $json.articleUrl }}`
   - EmailId: `{{ $json.emailId }}`
 
-### Connections
+### Main Workflow Connections
 
 ```
-Gmail Trigger
-  → Extract Info
-    → Read Log for Dedup
-      → Check Duplicate
-        → Fetch Article ─┬─ Success ─→ Get row(s) in sheet
-                         └─ Error   ─→ Get row(s) in sheet
-                                           → Format History
-                                             → AI Assign
-                                               → Parse AI Response ─┬→ Append row in sheet
-                                                                    └→ Send a text message
+Gmail Trigger → Extract Info → Read Log for Dedup → Check Duplicate
+  → Fetch Article (Success+Error) → Get row(s) in sheet → Format History
+    → AI Assign → Parse AI Response ─┬→ Build Telegram Payload → Send Telegram Notification
+                                      └→ Append row in sheet
 ```
 
-## Step 6: Error Notification Workflow
+## Step 6: Callback Handler Workflow
 
-1. Create a **new separate workflow** named "TEM Reviewer Bot - Error Alert"
-2. Add an **Error Trigger** node (this is the only trigger)
+Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
+
+### Node 1: Telegram Trigger
+- Credential: same Telegram bot
+- Updates: **Callback Query**
+
+### Node 2: Parse Callback (Code)
+- Paste code from `n8n/parse_callback.js`
+
+### Node 3: Answer Callback (HTTP Request)
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/answerCallbackQuery`
+- Body: JSON, Expression mode:
+  ```
+  {{ {callback_query_id: $json.callbackQueryId, text: '已確認！'} }}
+  ```
+- Settings → On Error: **Continue**
+
+### Node 4: Build Confirmation (Code)
+- Paste code from `n8n/build_confirmation.js`
+
+### Node 5: Send Confirmation (HTTP Request)
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
+- Body: JSON, Expression mode: `{{ $json }}`
+
+### Node 6: Read Log for Status (Google Sheets)
+- Operation: Read Rows
+- Document: TEM Reviewer Log
+- Sheet: Sheet1
+- Settings: **Always Output Data = ON**
+
+### Node 7: Update Status Row (Code)
+- Paste code from `n8n/update_status_row.js`
+
+### Node 8: Write Status (Google Sheets)
+- Operation: Update Row
+- Document: TEM Reviewer Log
+- Sheet: Sheet1
+- Column to Match On: `EmailId`
+- Map columns: `Reviewer1Status`, `Reviewer2Status`
+
+### Callback Workflow Connections
+
+```
+Telegram Trigger → Parse Callback → Answer Callback → Build Confirmation
+  ├→ Send Confirmation
+  └→ Read Log for Status → Update Status Row → Write Status
+```
+
+### Activate the callback workflow.
+
+## Step 7: Error Notification Workflow
+
+1. Create a **new workflow** named "TEM Reviewer Bot - Error Alert"
+2. Add an **Error Trigger** node
 3. Connect to a **Telegram** node:
-   - Same bot credential
-   - Chat ID: **your personal chat ID** (not the group — admin alerts go to you)
-   - Additional Fields → Parse Mode: HTML
+   - Chat ID: **your personal chat ID**
+   - Parse Mode: HTML
    - Text: paste from `n8n/error_notification_template.html`
-4. Save and **activate** this workflow
-5. Go back to the **main workflow** → Settings (gear icon) → **Error Workflow** → select "TEM Reviewer Bot - Error Alert"
-6. Save the main workflow
+4. Save and **activate**
+5. In **main workflow** → Settings → Error Workflow → select this workflow
 
-## Step 7: Test
+## Step 8: Test
 
 ### End-to-end test
-1. Send a test email to `eth.taipei@gmail.com` with subject `TEM 專欄投稿：測試文章`
-2. Wait for the Gmail filter to apply the label
-3. In n8n, click **"Test Workflow"** to run the full chain
-4. Verify:
-   - ✅ Telegram message received with correct formatting
-   - ✅ Google Sheet has new row with all fields including EmailId
+1. Send a test email with subject `TEM 專欄投稿：測試文章`
+2. Run the main workflow
+3. Verify Telegram notification with inline buttons appears
+4. Click a ✅ button — verify confirmation message appears
+5. Check Google Sheet — verify row created and status updated
 
 ### Deduplication test
-5. Click **"Test Workflow"** again with the same email
-6. Verify:
-   - ✅ Workflow stops at Check Duplicate node
-   - ✅ No second Telegram message
-   - ✅ No duplicate row in Google Sheet
+6. Run the main workflow again — verify it stops at Check Duplicate
 
 ### Error handling test
-7. Temporarily break something (e.g., invalid OpenAI key)
-8. Run the workflow
-9. Verify:
-   - ✅ You receive an error alert on your personal Telegram
-
-### Activate
-10. Toggle the workflow **Active** (top right switch)
-11. The workflow will now run automatically every 15 minutes
+7. Temporarily break something, run workflow, verify error alert
