@@ -27,7 +27,6 @@
 2. Settings → Filters → Create filter
 3. Subject: `TEM 專欄投稿：`
 4. Action: Apply label `TEM-submissions` + Forward to your personal Gmail
-5. In n8n, configure Gmail Trigger to filter by the label
 
 ## Step 3: Google Sheet
 
@@ -91,9 +90,14 @@
 ### Node 8: AI Assign (HTTP Request)
 - Method: POST
 - URL: `https://api.openai.com/v1/chat/completions`
-- Auth: Header Auth (`Authorization: Bearer YOUR_KEY`)
-- Body: JSON, Expression mode
-- Paste expression from `config/ai_assign_expression_generated.txt`
+- Auth: Generic Credential Type → Header Auth
+  - Name: `Authorization`
+  - Value: `Bearer YOUR_OPENAI_API_KEY`
+- Send Headers: `Content-Type: application/json`
+- Send Body: JSON
+- Specify Body: **Using JSON**, toggled to **Expression** mode
+- Paste the expression from `config/ai_assign_expression_generated.txt`
+  - Generate it first: `python scripts/generate_expression.py`
 
 ### Node 9: Parse AI Response (Code)
 - Paste code from `n8n/parse_ai_response.js`
@@ -131,67 +135,132 @@ Gmail Trigger → Extract Info → Read Log for Dedup → Check Duplicate
                                       └→ Append row in sheet
 ```
 
-## Step 6: Callback Handler Workflow
+## Step 6: Callback & Commands Handler Workflow
 
 Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 
 ### Node 1: Telegram Trigger
 - Credential: same Telegram bot
-- Updates: **Callback Query**
+- Trigger On: **Callback Query** AND **Message**
 
-### Node 2: Parse Callback (Code)
-- Paste code from `n8n/parse_callback.js`
+### Node 2: Route Input (Code)
+- Paste code from `n8n/route_input.js`
 
-### Node 3: Answer Callback (HTTP Request)
+### Node 3: Route Type (If)
+- Condition: `{{ $json._type }}` is equal to `callback`
+- Enable **"Convert types where required"**
+
+---
+
+### True branch — Callback (reviewer clicks ✅ button):
+
+**Node: Parse Callback (Code)**
+- Paste from `n8n/parse_callback.js`
+
+**Node: Answer Callback (HTTP Request)**
 - Method: POST
 - URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/answerCallbackQuery`
-- Body: JSON, Expression mode:
-  ```
-  {{ {callback_query_id: $json.callbackQueryId, text: '已確認！'} }}
-  ```
+- Body: JSON, Expression mode: `{{ {callback_query_id: $json.callbackQueryId, text: '已確認！'} }}`
 - Settings → On Error: **Continue**
 
-### Node 4: Build Confirmation (Code)
-- Paste code from `n8n/build_confirmation.js`
+**Node: Build Confirmation (Code)**
+- Paste from `n8n/build_confirmation.js`
 
-### Node 5: Send Confirmation (HTTP Request)
+**Node: Send Confirmation (HTTP Request)**
 - Method: POST
 - URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
 - Body: JSON, Expression mode: `{{ $json }}`
 
-### Node 6: Read Log for Status (Google Sheets)
+**Node: Read Log for Status (Google Sheets)**
 - Operation: Read Rows
 - Document: TEM Reviewer Log
-- Sheet: Sheet1
 - Settings: **Always Output Data = ON**
 
-### Node 7: Update Status Row (Code)
-- Paste code from `n8n/update_status_row.js`
+**Node: Update Status Row (Code)**
+- Paste from `n8n/update_status_row.js`
 
-### Node 8: Write Status (Google Sheets)
+**Node: Write Status (Google Sheets)**
 - Operation: Update Row
 - Document: TEM Reviewer Log
-- Sheet: Sheet1
-- Column to Match On: `EmailId`
-- Map columns: `Reviewer1Status`, `Reviewer2Status`
+- Match on: `EmailId`
+- Map: `Reviewer1Status`, `Reviewer2Status`
 
-### Callback Workflow Connections
-
+**Connections:**
 ```
-Telegram Trigger → Parse Callback → Answer Callback → Build Confirmation
+Parse Callback → Answer Callback → Build Confirmation
   ├→ Send Confirmation
   └→ Read Log for Status → Update Status Row → Write Status
 ```
 
-### Activate the callback workflow.
+---
+
+### False branch — Reassign command (`/reassign`):
+
+**Node: Parse Reassign Command (Code)**
+- Paste from `n8n/parse_reassign_command.js`
+
+**Node: Check Parse Error (If)**
+- Condition: `{{ $json.parseError }}` is equal to `true`
+- Enable **"Convert types where required"**
+
+**True (parse error) → Node: Build Error Reply (Code)**
+- Paste from `n8n/build_error_reply.js`
+
+**→ Node: Send Error Reply (HTTP Request)**
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
+- Body: JSON, Expression mode: `{{ $json }}`
+
+**False (valid command) → Node: Read for Reassign (Google Sheets)**
+- Operation: Read Rows
+- Document: TEM Reviewer Log
+- Settings: **Always Output Data = ON**
+
+**→ Node: Find and Reassign (Code)**
+- Paste from `n8n/find_and_reassign.js`
+
+**→ Node: Should Update Sheet (If)**
+- Condition: `{{ $json.shouldUpdate }}` is equal to `true`
+- Enable **"Convert types where required"**
+
+**True → Node: Write Reassignment (Google Sheets)**
+- Operation: Update Row
+- Document: TEM Reviewer Log
+- Match on: `EmailId` = `{{ $json.updatedRow.EmailId }}`
+- Map:
+  - Reviewer1: `{{ $json.updatedRow.Reviewer1 }}`
+  - Reviewer2: `{{ $json.updatedRow.Reviewer2 }}`
+  - Reviewer1Status: `{{ $json.updatedRow.Reviewer1Status }}`
+  - Reviewer2Status: `{{ $json.updatedRow.Reviewer2Status }}`
+
+**Both True and False → Node: Build Reassign Reply (Code)**
+- Paste from `n8n/build_reassign_reply.js`
+
+**→ Node: Send Reassign Reply (HTTP Request)**
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
+- Body: JSON, Expression mode: `{{ $json }}`
+
+**Connections:**
+```
+Parse Reassign Command → Check Parse Error (If)
+  ├─ True → Build Error Reply → Send Error Reply
+  └─ False → Read for Reassign → Find and Reassign → Should Update Sheet (If)
+              ├─ True → Write Reassignment ──→ Build Reassign Reply → Send Reassign Reply
+              └─ False ──────────────────────→ Build Reassign Reply → Send Reassign Reply
+```
+
+**Important:** Both True and False outputs of "Should Update Sheet" must connect to "Build Reassign Reply".
+
+### Activate this workflow.
 
 ## Step 7: Error Notification Workflow
 
 1. Create a **new workflow** named "TEM Reviewer Bot - Error Alert"
 2. Add an **Error Trigger** node
 3. Connect to a **Telegram** node:
-   - Chat ID: **your personal chat ID**
-   - Parse Mode: HTML
+   - Chat ID: **your personal chat ID** (not the group)
+   - Additional Fields → Parse Mode: HTML
    - Text: paste from `n8n/error_notification_template.html`
 4. Save and **activate**
 5. In **main workflow** → Settings → Error Workflow → select this workflow
@@ -199,14 +268,22 @@ Telegram Trigger → Parse Callback → Answer Callback → Build Confirmation
 ## Step 8: Test
 
 ### End-to-end test
-1. Send a test email with subject `TEM 專欄投稿：測試文章`
+1. Send a test email to `eth.taipei@gmail.com` with subject `TEM 專欄投稿：測試文章`
 2. Run the main workflow
-3. Verify Telegram notification with inline buttons appears
+3. Verify Telegram notification with inline ✅ buttons appears
 4. Click a ✅ button — verify confirmation message appears
 5. Check Google Sheet — verify row created and status updated
 
 ### Deduplication test
 6. Run the main workflow again — verify it stops at Check Duplicate
 
+### Manual override test
+7. In Telegram, send: `/reassign 測試 sc0vu jerry9988`
+8. Verify reassignment confirmation message
+9. Check Google Sheet — verify reviewer and status updated
+10. Test quoted keywords: `/reassign "測試文章" sc0vu jerry9988`
+
 ### Error handling test
-7. Temporarily break something, run workflow, verify error alert
+11. Temporarily break something (e.g., invalid OpenAI key)
+12. Run the workflow
+13. Verify error alert on your personal Telegram
