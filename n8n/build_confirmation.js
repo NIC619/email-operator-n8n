@@ -2,9 +2,9 @@
 // Description: Builds the confirmation message after a reviewer clicks accept
 // n8n Node Type: Code (JavaScript), Mode: Run Once for All Items
 // Workflow: TEM Reviewer Bot - Callback Handler
-// Place this AFTER "Answer Callback" and BEFORE "Send Confirmation"
+// Place this on the True branch of "Is Valid Acceptance" If node
 
-const d = $('Parse Callback').first().json;
+const d = $('Validate Acceptance').first().json;
 
 const text = d.clickerUsername === d.reviewerName
   ? '✅ @' + d.reviewerName + ' 已接受審稿任務！'

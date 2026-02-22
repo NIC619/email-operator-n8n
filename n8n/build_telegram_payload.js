@@ -1,11 +1,15 @@
 // Node: Build Telegram Payload
 // Description: Builds the Telegram notification message with inline keyboard buttons
-//              for reviewer confirmation
+//              for reviewer confirmation. Callback data includes slot (r1/r2) for
+//              accurate identification after reassignment.
 // n8n Node Type: Code (JavaScript), Mode: Run Once for All Items
 // Workflow: Main workflow
 // Place this AFTER "Parse AI Response" and BEFORE "Send Telegram Notification"
 //
 // IMPORTANT: Update chat_id to your Telegram group chat ID when going live
+//
+// Callback data format: accept_<slot>_<reviewerName>_<emailId>
+// Example: accept_r1_sc0vu_19c7988a7950517f
 
 const d = $input.first().json;
 
@@ -39,10 +43,10 @@ return [{
     reply_markup: {
       inline_keyboard: [
         [
-          {text: "✅ 接受 " + d.reviewer1 + " 的審稿任務", callback_data: "accept_" + d.reviewer1 + "_" + d.emailId}
+          {text: "✅ 接受 " + d.reviewer1 + " 的審稿任務", callback_data: "accept_r1_" + d.reviewer1 + "_" + d.emailId}
         ],
         [
-          {text: "✅ 接受 " + d.reviewer2 + " 的審稿任務", callback_data: "accept_" + d.reviewer2 + "_" + d.emailId}
+          {text: "✅ 接受 " + d.reviewer2 + " 的審稿任務", callback_data: "accept_r2_" + d.reviewer2 + "_" + d.emailId}
         ]
       ]
     }
