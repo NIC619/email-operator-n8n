@@ -36,12 +36,20 @@ When reviewers join, leave, or change specialties:
    ```
 3. Regenerate the expression and update n8n
 
+## Adding a New Telegram Command
+
+To add a new bot command:
+
+1. Update `n8n/route_input.js` to detect the new command
+2. Add a new condition in the routing If nodes (or extend the existing chain)
+3. Create the parse/build/send nodes for the new command
+4. Register the command with @BotFather: `/setcommands` → add your command
+
 ## Updating Telegram Group Chat ID
 
 If the group changes (e.g., migrated to supergroup):
 1. Get the new chat ID via `@raw_data_bot`
 2. Update `chat_id` in the **Build Telegram Payload** code node (main workflow)
-3. Update `chat_id` in the **Build Confirmation** code node if hardcoded
 
 ## Troubleshooting
 
@@ -62,13 +70,22 @@ If the group changes (e.g., migrated to supergroup):
 
 ### Inline buttons not working
 - Verify the **Callback Handler workflow** is activated
-- Check that the Telegram Trigger node is set to **Callback Query**
+- Check that the Telegram Trigger is set to **Callback Query** AND **Message**
 - Ensure the bot token in the callback workflow matches the main workflow
 
 ### "query is too old" error on Answer Callback
 - This is normal when testing step-by-step — Telegram requires answering within 30 seconds
 - In production this doesn't happen since all nodes execute automatically
 - Set Answer Callback → Settings → On Error → Continue
+
+### Acceptance validation issues
+- Double-accept rejected: Working as intended — status already shows ✅
+- Reassigned slot rejected: Working as intended — status shows 🔄
+- Wrong reviewer shown in rejection: Check that callback_data includes slot (r1/r2)
+
+### Reassign command issues
+- "找不到實際負責的 Reviewer": The actual reviewer may differ from the column value if someone accepted on behalf. Use `/status` to check who the actual reviewer is.
+- After reassignment, the old reviewer's name can no longer be used for further reassignment
 
 ### Google Sheets errors
 - Check OAuth token hasn't expired (re-authenticate in n8n)
@@ -92,7 +109,11 @@ The TEM Reviewer Log sheet serves as both a history database and audit log. Revi
 - Check if assignments are balanced across reviewers
 - Identify reviewers who are over/under-assigned
 - Spot any AI misclassifications
-- Track reviewer acceptance rates via Reviewer1Status/Reviewer2Status columns
+- Track reviewer acceptance rates via Status columns
+- Review reassignment history
+
+### Using /status command
+Use `/status <keyword>` in Telegram to quickly check the current state of any submission without opening the Google Sheet.
 
 ### Error workflow
 The error notification workflow sends you a Telegram message when any node fails. Check these promptly as submissions may need manual processing.

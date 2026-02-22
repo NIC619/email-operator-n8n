@@ -14,9 +14,10 @@ When a community member submits an article to the TEM Medium column via email, t
 6. **Uses AI** (GPT-4o) to analyze the article topic and select 2 appropriate reviewers, balancing workload
 7. **Notifies** the reviewers group via Telegram with @mentions and inline accept buttons
 8. **Logs** the assignment in Google Sheets for history tracking and deduplication
-9. **Handles reviewer confirmation** — reviewers click ✅ to accept, status is logged in the sheet
-10. **Supports manual override** — `/reassign` command in Telegram to swap reviewers
-11. **Alerts** on errors via a separate Telegram notification to admin
+9. **Handles reviewer confirmation** — reviewers click ✅ to accept, with validation against double-accepts and reassigned slots
+10. **Supports manual override** — `/reassign` command in Telegram to swap reviewers (matches actual current reviewer from status)
+11. **Supports status queries** — `/status` command to check current reviewer assignments
+12. **Alerts** on errors via a separate Telegram notification to admin
 
 ## Architecture
 
@@ -53,20 +54,21 @@ Gmail (eth.taipei@gmail.com)
 │  Telegram Trigger (Callback Query + Message)          │
 │    → Route Input                                      │
 │      → Route Type (If: _type === 'callback')          │
-│        ├─ True (Callback button click):               │
+│        ├─ True (✅ button click):                     │
 │        │   Parse Callback → Answer Callback           │
-│        │     → Build Confirmation                     │
-│        │       ├→ Send Confirmation                   │
-│        │       └→ Read Log → Update Status → Write    │
+│        │     → Read Log for Validation                │
+│        │       → Validate Acceptance                  │
+│        │         → Is Valid Acceptance (If)            │
+│        │           ├─ True: Confirm + Update Sheet    │
+│        │           └─ False: Send Rejection           │
 │        │                                              │
-│        └─ False (Reassign command):                   │
-│            Parse Reassign Command                     │
-│              → Check Parse Error                      │
-│                ├→ Error Reply                         │
-│                └→ Read Sheet → Find and Reassign      │
-│                    → Should Update Sheet              │
-│                      ├→ Write Reassignment            │
-│                      └→ Build Reply → Send Reply      │
+│        └─ False: Is Reassign (If: _type === 'reassign')
+│            ├─ True (/reassign command):               │
+│            │   Parse → Find → Update Sheet → Reply    │
+│            │                                          │
+│            └─ False (/status command):                │
+│                Parse → Read Sheet → Build Status      │
+│                  → Send Status Reply                  │
 └──────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────┐
@@ -100,30 +102,42 @@ Gmail (eth.taipei@gmail.com)
 | Node | Type | Key Settings |
 |------|------|-------------|
 | Telegram Trigger | Telegram Trigger | Updates: Callback Query + Message |
-| Route Input | Code (JS) | Routes to callback or reassign flow |
+| Route Input | Code (JS) | Routes to callback, reassign, or status |
 | Route Type | If | `_type === 'callback'`, Convert types ON |
-| Parse Callback | Code (JS) | Extracts action, reviewer, clicker |
+| **Callback flow** | | |
+| Parse Callback | Code (JS) | Extracts slot (r1/r2), reviewer, clicker |
 | Answer Callback | HTTP Request | POST answerCallbackQuery, On Error: Continue |
-| Build Confirmation | Code (JS) | References Parse Callback via `$()` |
+| Read Log for Validation | Google Sheets (Read) | **Always Output Data = ON** |
+| Validate Acceptance | Code (JS) | Checks status before allowing acceptance |
+| Is Valid Acceptance | If | `valid === true`, Convert types ON |
+| Build Confirmation | Code (JS) | References Validate Acceptance via `$()` |
 | Send Confirmation | HTTP Request | POST sendMessage, Body: `{{ $json }}` |
-| Read Log for Status | Google Sheets (Read) | **Always Output Data = ON** |
-| Update Status Row | Code (JS) | Matches EmailId, prepares status |
+| Update Status Row | Code (JS) | Uses isReviewer1 from Validate Acceptance |
 | Write Status | Google Sheets (Update) | Match on EmailId column |
+| Build Rejection Message | Code (JS) | References Validate Acceptance via `$()` |
+| Send Rejection | HTTP Request | POST sendMessage, Body: `{{ $json }}` |
+| **Reassign flow** | | |
+| Is Reassign | If | `_type === 'reassign'`, Convert types ON |
 | Parse Reassign Command | Code (JS) | Supports quoted keywords |
 | Check Parse Error | If | `parseError === true`, Convert types ON |
 | Build Error Reply | Code (JS) | Formats parse error message |
 | Send Error Reply | HTTP Request | POST sendMessage, Body: `{{ $json }}` |
 | Read for Reassign | Google Sheets (Read) | **Always Output Data = ON** |
-| Find and Reassign | Code (JS) | Matches subject keyword, prepares update |
+| Find and Reassign | Code (JS) | Strict actual-reviewer matching from status |
 | Should Update Sheet | If | `shouldUpdate === true`, Convert types ON |
 | Write Reassignment | Google Sheets (Update) | Match on EmailId, updates Reviewer + Status |
 | Build Reassign Reply | Code (JS) | Formats success/error message |
 | Send Reassign Reply | HTTP Request | POST sendMessage, Body: `{{ $json }}` |
+| **Status flow** | | |
+| Parse Status Command | Code (JS) | Supports quoted keywords |
+| Read for Status Query | Google Sheets (Read) | **Always Output Data = ON** |
+| Build Status Reply | Code (JS) | Infers actual reviewers from status |
+| Send Status Reply | HTTP Request | POST sendMessage, Body: `{{ $json }}` |
 
 ## Telegram Commands
 
 ### `/reassign`
-Manually reassign a reviewer for an article.
+Manually reassign a reviewer for an article. Only matches against the **actual current reviewer** (inferred from status fields).
 
 **Format:**
 ```
@@ -139,9 +153,28 @@ Manually reassign a reviewer for an article.
 
 **Behavior:**
 - Searches for the most recent article matching the subject keyword
-- Replaces the old reviewer with the new one in Google Sheets
-- Sends a confirmation message to the group
-- Logs the change with who performed it
+- Infers actual reviewer from status (e.g., if `jerry9988` accepted on behalf of `sc0vu`, the actual reviewer is `jerry9988`)
+- Only the actual current reviewer can be reassigned — using the original name will fail
+- Updates Google Sheets and sends a confirmation message
+
+### `/status`
+Check the current reviewer assignments and acceptance status for an article.
+
+**Format:**
+```
+/status <subject_keyword>
+/status "<multi word keyword>"
+```
+
+**Examples:**
+```
+/status Foundry
+/status "測試 n8n"
+```
+
+**Response shows:**
+- Article subject, category, sender, date
+- Each reviewer with their actual identity and status (⏳ 待確認 / ✅ 已接受 / 🔄 已重新分配)
 
 ## Project Structure
 
@@ -165,16 +198,22 @@ tem-reviewer-bot/
 │   ├── build_telegram_payload.js           # Notification with inline ✅ buttons
 │   │
 │   ├── # Callback handler workflow nodes
-│   ├── route_input.js                      # Routes callback vs command
-│   ├── parse_callback.js                   # Handles ✅ button clicks
+│   ├── route_input.js                      # Routes callback vs reassign vs status
+│   ├── parse_callback.js                   # Handles ✅ button clicks (extracts slot)
+│   ├── validate_acceptance.js              # Validates before accepting (checks status)
 │   ├── build_confirmation.js               # Confirmation message builder
 │   ├── update_status_row.js                # Google Sheet status updater
+│   ├── build_rejection_message.js          # Rejection message for invalid accepts
 │   │
 │   ├── # Manual override nodes
 │   ├── parse_reassign_command.js           # Parses /reassign command
-│   ├── find_and_reassign.js                # Finds article, prepares update
+│   ├── find_and_reassign.js                # Finds article, actual-reviewer matching
 │   ├── build_reassign_reply.js             # Builds success/error reply
 │   ├── build_error_reply.js                # Builds parse error reply
+│   │
+│   ├── # Status query nodes
+│   ├── parse_status_command.js             # Parses /status command
+│   ├── build_status_reply.js               # Builds status reply with reviewer info
 │   │
 │   ├── # Templates
 │   └── error_notification_template.html    # Error alert template
@@ -204,7 +243,8 @@ tem-reviewer-bot/
 **Status values:**
 - `✅ Accepted` — reviewer confirmed themselves
 - `✅ username (代 reviewer)` — someone accepted on behalf
-- `🔄 Reassigned by @username` — reviewer was manually replaced via `/reassign`
+- `🔄 Reassigned by @username (old → new)` — reviewer was manually replaced via `/reassign`
+- (empty) — pending, not yet confirmed
 
 ## Quick Start
 

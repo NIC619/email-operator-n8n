@@ -139,14 +139,16 @@ Gmail Trigger → Extract Info → Read Log for Dedup → Check Duplicate
 
 Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 
-### Node 1: Telegram Trigger
+### Trigger & Routing
+
+**Node: Telegram Trigger**
 - Credential: same Telegram bot
 - Trigger On: **Callback Query** AND **Message**
 
-### Node 2: Route Input (Code)
-- Paste code from `n8n/route_input.js`
+**Node: Route Input (Code)**
+- Paste from `n8n/route_input.js`
 
-### Node 3: Route Type (If)
+**Node: Route Type (If)**
 - Condition: `{{ $json._type }}` is equal to `callback`
 - Enable **"Convert types where required"**
 
@@ -163,38 +165,63 @@ Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 - Body: JSON, Expression mode: `{{ {callback_query_id: $json.callbackQueryId, text: '已確認！'} }}`
 - Settings → On Error: **Continue**
 
-**Node: Build Confirmation (Code)**
-- Paste from `n8n/build_confirmation.js`
-
-**Node: Send Confirmation (HTTP Request)**
-- Method: POST
-- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
-- Body: JSON, Expression mode: `{{ $json }}`
-
-**Node: Read Log for Status (Google Sheets)**
+**Node: Read Log for Validation (Google Sheets)**
 - Operation: Read Rows
 - Document: TEM Reviewer Log
 - Settings: **Always Output Data = ON**
 
-**Node: Update Status Row (Code)**
+**Node: Validate Acceptance (Code)**
+- Paste from `n8n/validate_acceptance.js`
+
+**Node: Is Valid Acceptance (If)**
+- Condition: `{{ $json.valid }}` is equal to `true`
+- Enable **"Convert types where required"**
+
+**True → Node: Build Confirmation (Code)**
+- Paste from `n8n/build_confirmation.js`
+
+**→ Node: Send Confirmation (HTTP Request)**
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
+- Body: JSON, Expression mode: `{{ $json }}`
+
+**→ Node: Update Status Row (Code)**
 - Paste from `n8n/update_status_row.js`
 
-**Node: Write Status (Google Sheets)**
+**→ Node: Write Status (Google Sheets)**
 - Operation: Update Row
 - Document: TEM Reviewer Log
 - Match on: `EmailId`
 - Map: `Reviewer1Status`, `Reviewer2Status`
 
-**Connections:**
+**False → Node: Build Rejection Message (Code)**
+- Paste from `n8n/build_rejection_message.js`
+
+**→ Node: Send Rejection (HTTP Request)**
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
+- Body: JSON, Expression mode: `{{ $json }}`
+
+**Callback connections:**
 ```
-Parse Callback → Answer Callback → Build Confirmation
-  ├→ Send Confirmation
-  └→ Read Log for Status → Update Status Row → Write Status
+Parse Callback → Answer Callback → Read Log for Validation → Validate Acceptance
+  → Is Valid Acceptance (If)
+    ├─ True: Build Confirmation ─┬→ Send Confirmation
+    │                            └→ Update Status Row → Write Status
+    └─ False: Build Rejection Message → Send Rejection
 ```
 
 ---
 
-### False branch — Reassign command (`/reassign`):
+### False branch — Commands (reassign & status):
+
+**Node: Is Reassign (If)**
+- Condition: `{{ $json._type }}` is equal to `reassign`
+- Enable **"Convert types where required"**
+
+---
+
+#### True — `/reassign` command:
 
 **Node: Parse Reassign Command (Code)**
 - Paste from `n8n/parse_reassign_command.js`
@@ -203,7 +230,7 @@ Parse Callback → Answer Callback → Build Confirmation
 - Condition: `{{ $json.parseError }}` is equal to `true`
 - Enable **"Convert types where required"**
 
-**True (parse error) → Node: Build Error Reply (Code)**
+**True → Node: Build Error Reply (Code)**
 - Paste from `n8n/build_error_reply.js`
 
 **→ Node: Send Error Reply (HTTP Request)**
@@ -211,7 +238,7 @@ Parse Callback → Answer Callback → Build Confirmation
 - URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
 - Body: JSON, Expression mode: `{{ $json }}`
 
-**False (valid command) → Node: Read for Reassign (Google Sheets)**
+**False → Node: Read for Reassign (Google Sheets)**
 - Operation: Read Rows
 - Document: TEM Reviewer Log
 - Settings: **Always Output Data = ON**
@@ -241,7 +268,7 @@ Parse Callback → Answer Callback → Build Confirmation
 - URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
 - Body: JSON, Expression mode: `{{ $json }}`
 
-**Connections:**
+**Reassign connections:**
 ```
 Parse Reassign Command → Check Parse Error (If)
   ├─ True → Build Error Reply → Send Error Reply
@@ -250,7 +277,32 @@ Parse Reassign Command → Check Parse Error (If)
               └─ False ──────────────────────→ Build Reassign Reply → Send Reassign Reply
 ```
 
-**Important:** Both True and False outputs of "Should Update Sheet" must connect to "Build Reassign Reply".
+---
+
+#### False — `/status` command:
+
+**Node: Parse Status Command (Code)**
+- Paste from `n8n/parse_status_command.js`
+
+**Node: Read for Status Query (Google Sheets)**
+- Operation: Read Rows
+- Document: TEM Reviewer Log
+- Settings: **Always Output Data = ON**
+
+**Node: Build Status Reply (Code)**
+- Paste from `n8n/build_status_reply.js`
+
+**Node: Send Status Reply (HTTP Request)**
+- Method: POST
+- URL: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage`
+- Body: JSON, Expression mode: `{{ $json }}`
+
+**Status connections:**
+```
+Parse Status Command → Read for Status Query → Build Status Reply → Send Status Reply
+```
+
+---
 
 ### Activate this workflow.
 
@@ -274,16 +326,25 @@ Parse Reassign Command → Check Parse Error (If)
 4. Click a ✅ button — verify confirmation message appears
 5. Check Google Sheet — verify row created and status updated
 
+### Acceptance validation test
+6. Click the same ✅ button again — verify rejection message ("已被接受")
+7. Use `/reassign` to reassign a reviewer, then click the old button — verify rejection ("已重新分配")
+
 ### Deduplication test
-6. Run the main workflow again — verify it stops at Check Duplicate
+8. Run the main workflow again — verify it stops at Check Duplicate
 
 ### Manual override test
-7. In Telegram, send: `/reassign 測試 sc0vu jerry9988`
-8. Verify reassignment confirmation message
-9. Check Google Sheet — verify reviewer and status updated
-10. Test quoted keywords: `/reassign "測試文章" sc0vu jerry9988`
+9. In Telegram, send: `/reassign 測試 sc0vu jerry9988`
+10. Verify reassignment confirmation message
+11. Check Google Sheet — verify reviewer and status updated
+12. Test quoted keywords: `/reassign "測試文章" sc0vu jerry9988`
+
+### Status query test
+13. Send: `/status 測試`
+14. Verify status reply shows article info, reviewers, and their acceptance status
+15. Test quoted keywords: `/status "測試文章"`
 
 ### Error handling test
-11. Temporarily break something (e.g., invalid OpenAI key)
-12. Run the workflow
-13. Verify error alert on your personal Telegram
+16. Temporarily break something (e.g., invalid OpenAI key)
+17. Run the workflow
+18. Verify error alert on your personal Telegram
