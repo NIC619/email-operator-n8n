@@ -40,7 +40,7 @@ When reviewers join, leave, or change specialties:
 
 To add a new bot command:
 
-1. Update `n8n/route_input.js` to detect the new command
+1. Update `n8n/callback/route_input.js` to detect the new command
 2. Add a new condition in the routing If nodes (or extend the existing chain)
 3. Create the parse/build/send nodes for the new command
 4. Register the command with @BotFather: `/setcommands` → add your command
@@ -123,7 +123,7 @@ The error notification workflow sends you a Telegram message when any node fails
 ### Export n8n workflows
 1. In n8n, open each workflow
 2. Click the three dots menu → Download
-3. Save the JSON files to `n8n/exports/` directory
+3. Save the JSON files to `n8n/exports/` (create the folder if needed)
 4. Commit to git
 
 ### Google Sheet

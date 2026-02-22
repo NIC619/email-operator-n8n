@@ -190,33 +190,33 @@ tem-reviewer-bot/
 ├── scripts/
 │   └── generate_expression.py              # Generates n8n expression from system prompt
 ├── n8n/
-│   ├── # Main workflow nodes
-│   ├── extract_info.js                     # Parse Gmail trigger data
-│   ├── check_duplicate.js                  # Deduplication logic
-│   ├── format_history.js                   # Format Sheets history for AI prompt
-│   ├── parse_ai_response.js               # Parse AI JSON response
-│   ├── build_telegram_payload.js           # Notification with inline ✅ buttons
+│   ├── main/                               # TEM Reviewer Bot (main workflow)
+│   │   ├── extract_info.js                 # Parse Gmail trigger data
+│   │   ├── check_duplicate.js              # Deduplication logic
+│   │   ├── format_history.js               # Format Sheets history for AI prompt
+│   │   ├── parse_ai_response.js            # Parse AI JSON response
+│   │   └── build_telegram_payload.js       # Notification with inline ✅ buttons
 │   │
-│   ├── # Callback handler workflow nodes
-│   ├── route_input.js                      # Routes callback vs reassign vs status
-│   ├── parse_callback.js                   # Handles ✅ button clicks (extracts slot)
-│   ├── validate_acceptance.js              # Validates before accepting (checks status)
-│   ├── build_confirmation.js               # Confirmation message builder
-│   ├── update_status_row.js                # Google Sheet status updater
-│   ├── build_rejection_message.js          # Rejection message for invalid accepts
+│   ├── callback/                           # Callback handler workflow
+│   │   ├── route_input.js                  # Routes callback vs reassign vs status
+│   │   ├── accept/                         # ✅ button clicks
+│   │   │   ├── parse_callback.js           # Extracts slot from button click
+│   │   │   ├── validate_acceptance.js      # Validates before accepting
+│   │   │   ├── build_confirmation.js       # Confirmation message builder
+│   │   │   ├── update_status_row.js        # Google Sheet status updater
+│   │   │   └── build_rejection_message.js  # Rejection message for invalid accepts
+│   │   ├── reassign/                       # /reassign command
+│   │   │   ├── parse_reassign_command.js   # Parses /reassign command
+│   │   │   ├── find_and_reassign.js        # Finds article, actual-reviewer matching
+│   │   │   ├── build_reassign_reply.js     # Builds success reply
+│   │   │   └── build_error_reply.js        # Builds parse error reply
+│   │   └── status/                         # /status command
+│   │       ├── parse_status_command.js     # Parses /status command
+│   │       └── build_status_reply.js       # Builds status reply with reviewer info
 │   │
-│   ├── # Manual override nodes
-│   ├── parse_reassign_command.js           # Parses /reassign command
-│   ├── find_and_reassign.js                # Finds article, actual-reviewer matching
-│   ├── build_reassign_reply.js             # Builds success/error reply
-│   ├── build_error_reply.js                # Builds parse error reply
-│   │
-│   ├── # Status query nodes
-│   ├── parse_status_command.js             # Parses /status command
-│   ├── build_status_reply.js               # Builds status reply with reviewer info
-│   │
-│   ├── # Templates
-│   └── error_notification_template.html    # Error alert template
+│   ├── error/                              # Error alert workflow
+│   │   └── error_notification_template.html
+│   └── README.md                           # n8n folder structure docs
 └── docs/
     ├── setup_guide.md                      # Step-by-step setup instructions
     ├── maintenance_guide.md                # How to update reviewers, troubleshoot

@@ -56,7 +56,7 @@
 - Filter by label: `TEM-submissions`
 
 ### Node 2: Extract Info (Code)
-- Paste code from `n8n/extract_info.js`
+- Paste code from `n8n/main/extract_info.js`
 - Mode: Run Once for All Items
 
 ### Node 3: Read Log for Dedup (Google Sheets)
@@ -66,7 +66,7 @@
 - Settings: **Always Output Data = ON**
 
 ### Node 4: Check Duplicate (Code)
-- Paste code from `n8n/check_duplicate.js`
+- Paste code from `n8n/main/check_duplicate.js`
 - Mode: Run Once for All Items
 - Settings: **Always Output Data = OFF**
 
@@ -83,7 +83,7 @@
 - Settings: **Always Output Data = ON**
 
 ### Node 7: Format History (Code)
-- Paste code from `n8n/format_history.js`
+- Paste code from `n8n/main/format_history.js`
 - Mode: Run Once for All Items
 - Settings: **Always Output Data = ON**
 
@@ -100,11 +100,11 @@
   - Generate it first: `python scripts/generate_expression.py`
 
 ### Node 9: Parse AI Response (Code)
-- Paste code from `n8n/parse_ai_response.js`
+- Paste code from `n8n/main/parse_ai_response.js`
 - Mode: Run Once for All Items
 
 ### Node 10: Build Telegram Payload (Code)
-- Paste code from `n8n/build_telegram_payload.js`
+- Paste code from `n8n/main/build_telegram_payload.js`
 - Mode: Run Once for All Items
 - **Update** `chat_id` to your group chat ID
 
@@ -146,7 +146,7 @@ Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 - Trigger On: **Callback Query** AND **Message**
 
 **Node: Route Input (Code)**
-- Paste from `n8n/route_input.js`
+- Paste from `n8n/callback/route_input.js`
 
 **Node: Route Type (If)**
 - Condition: `{{ $json._type }}` is equal to `callback`
@@ -157,7 +157,7 @@ Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 ### True branch — Callback (reviewer clicks ✅ button):
 
 **Node: Parse Callback (Code)**
-- Paste from `n8n/parse_callback.js`
+- Paste from `n8n/callback/accept/parse_callback.js`
 
 **Node: Answer Callback (HTTP Request)**
 - Method: POST
@@ -171,14 +171,14 @@ Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 - Settings: **Always Output Data = ON**
 
 **Node: Validate Acceptance (Code)**
-- Paste from `n8n/validate_acceptance.js`
+- Paste from `n8n/callback/accept/validate_acceptance.js`
 
 **Node: Is Valid Acceptance (If)**
 - Condition: `{{ $json.valid }}` is equal to `true`
 - Enable **"Convert types where required"**
 
 **True → Node: Build Confirmation (Code)**
-- Paste from `n8n/build_confirmation.js`
+- Paste from `n8n/callback/accept/build_confirmation.js`
 
 **→ Node: Send Confirmation (HTTP Request)**
 - Method: POST
@@ -186,7 +186,7 @@ Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 - Body: JSON, Expression mode: `{{ $json }}`
 
 **→ Node: Update Status Row (Code)**
-- Paste from `n8n/update_status_row.js`
+- Paste from `n8n/callback/accept/update_status_row.js`
 
 **→ Node: Write Status (Google Sheets)**
 - Operation: Update Row
@@ -195,7 +195,7 @@ Create a **new workflow** named **"TEM Reviewer Bot - Callback Handler"**
 - Map: `Reviewer1Status`, `Reviewer2Status`
 
 **False → Node: Build Rejection Message (Code)**
-- Paste from `n8n/build_rejection_message.js`
+- Paste from `n8n/callback/accept/build_rejection_message.js`
 
 **→ Node: Send Rejection (HTTP Request)**
 - Method: POST
@@ -224,14 +224,14 @@ Parse Callback → Answer Callback → Read Log for Validation → Validate Acce
 #### True — `/reassign` command:
 
 **Node: Parse Reassign Command (Code)**
-- Paste from `n8n/parse_reassign_command.js`
+- Paste from `n8n/callback/reassign/parse_reassign_command.js`
 
 **Node: Check Parse Error (If)**
 - Condition: `{{ $json.parseError }}` is equal to `true`
 - Enable **"Convert types where required"**
 
 **True → Node: Build Error Reply (Code)**
-- Paste from `n8n/build_error_reply.js`
+- Paste from `n8n/callback/reassign/build_error_reply.js`
 
 **→ Node: Send Error Reply (HTTP Request)**
 - Method: POST
@@ -244,7 +244,7 @@ Parse Callback → Answer Callback → Read Log for Validation → Validate Acce
 - Settings: **Always Output Data = ON**
 
 **→ Node: Find and Reassign (Code)**
-- Paste from `n8n/find_and_reassign.js`
+- Paste from `n8n/callback/reassign/find_and_reassign.js`
 
 **→ Node: Should Update Sheet (If)**
 - Condition: `{{ $json.shouldUpdate }}` is equal to `true`
@@ -261,7 +261,7 @@ Parse Callback → Answer Callback → Read Log for Validation → Validate Acce
   - Reviewer2Status: `{{ $json.updatedRow.Reviewer2Status }}`
 
 **Both True and False → Node: Build Reassign Reply (Code)**
-- Paste from `n8n/build_reassign_reply.js`
+- Paste from `n8n/callback/reassign/build_reassign_reply.js`
 
 **→ Node: Send Reassign Reply (HTTP Request)**
 - Method: POST
@@ -282,7 +282,7 @@ Parse Reassign Command → Check Parse Error (If)
 #### False — `/status` command:
 
 **Node: Parse Status Command (Code)**
-- Paste from `n8n/parse_status_command.js`
+- Paste from `n8n/callback/status/parse_status_command.js`
 
 **Node: Read for Status Query (Google Sheets)**
 - Operation: Read Rows
@@ -290,7 +290,7 @@ Parse Reassign Command → Check Parse Error (If)
 - Settings: **Always Output Data = ON**
 
 **Node: Build Status Reply (Code)**
-- Paste from `n8n/build_status_reply.js`
+- Paste from `n8n/callback/status/build_status_reply.js`
 
 **Node: Send Status Reply (HTTP Request)**
 - Method: POST
@@ -313,7 +313,7 @@ Parse Status Command → Read for Status Query → Build Status Reply → Send S
 3. Connect to a **Telegram** node:
    - Chat ID: **your personal chat ID** (not the group)
    - Additional Fields → Parse Mode: HTML
-   - Text: paste from `n8n/error_notification_template.html`
+   - Text: paste from `n8n/error/error_notification_template.html`
 4. Save and **activate**
 5. In **main workflow** → Settings → Error Workflow → select this workflow
 
